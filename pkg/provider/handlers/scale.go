@@ -29,6 +29,20 @@ import (
 	"github.com/openfaas/faasd/pkg"
 )
 
+type ScaleServiceRequest2 struct {
+	ServiceName string                   `json:"serviceName"`
+	Replicas    uint64                   `json:"replicas"`
+	Namespace   string                   `json:"namespace,omitempty"`
+	Image       string                   `json:"image"`
+	EnvProcess  string                   `json:"envProcess,omitempty"`
+	EnvVars     map[string]string        `json:"envVars,omitempty"`
+	Secrets     []string                 `json:"secrets,omitempty"`
+	Limits      *types.FunctionResources `json:"limits,omitempty"`
+	Labels      *map[string]string       `json:"labels,omitempty"`
+	Annotations *map[string]string       `json:"annotations,omitempty"`
+	Checkpoint  uint64                   `json:"checkpoint,omitempty"`
+}
+
 func MakeReplicaUpdateHandler(client *containerd.Client, secretMountPath string, cni gocni.CNI) func(w http.ResponseWriter, r *http.Request) {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +58,7 @@ func MakeReplicaUpdateHandler(client *containerd.Client, secretMountPath string,
 
 		body, _ := io.ReadAll(r.Body)
 
-		req := types.ScaleServiceRequest{}
+		req := ScaleServiceRequest2{}
 		if err := json.Unmarshal(body, &req); err != nil {
 			log.Printf("[Scale] error parsing input: %s", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -296,7 +310,7 @@ func listContainersByPrefix(client *containerd.Client, ctx context.Context, pref
 }
 
 // createNewContainer creates a new container with the given name and CNI configuration
-func createNewContainer(ctx context.Context, req types.ScaleServiceRequest, client *containerd.Client, newContainerName string, name string, secretMountPath string) error {
+func createNewContainer(ctx context.Context, req ScaleServiceRequest2, client *containerd.Client, newContainerName string, name string, secretMountPath string) error {
 	// Define container creation parameters
 	snapshotter := ""
 	if val, ok := os.LookupEnv("snapshotter"); ok {
@@ -364,7 +378,7 @@ func createNewContainer(ctx context.Context, req types.ScaleServiceRequest, clie
 	return nil
 }
 
-func prepull1(ctx context.Context, req types.ScaleServiceRequest, client *containerd.Client) (containerd.Image, error) {
+func prepull1(ctx context.Context, req ScaleServiceRequest2, client *containerd.Client) (containerd.Image, error) {
 	start := time.Now()
 
 	r, err := reference.ParseNormalizedNamed(req.Image)
@@ -390,7 +404,7 @@ func prepull1(ctx context.Context, req types.ScaleServiceRequest, client *contai
 	return image, nil
 }
 
-func buildLabels1(request *types.ScaleServiceRequest) (map[string]string, error) {
+func buildLabels1(request *ScaleServiceRequest2) (map[string]string, error) {
 	labels := map[string]string{}
 
 	if request.Labels != nil {
@@ -427,7 +441,7 @@ func buildLabels1(request *types.ScaleServiceRequest) (map[string]string, error)
 //
 //		body, _ := io.ReadAll(r.Body)
 //
-//		req := types.ScaleServiceRequest{}
+//		req := ScaleServiceRequest2{}
 //		if err := json.Unmarshal(body, &req); err != nil {
 //			log.Printf("[Scale] error parsing input: %s", err)
 //			http.Error(w, err.Error(), http.StatusBadRequest)

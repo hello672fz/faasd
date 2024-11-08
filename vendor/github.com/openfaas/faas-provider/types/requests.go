@@ -8,14 +8,6 @@ type ScaleServiceRequest struct {
 	ServiceName string `json:"serviceName"`
 	Replicas    uint64 `json:"replicas"`
 	Namespace   string `json:"namespace,omitempty"`
-	Image string `json:"image"`
-	EnvProcess string `json:"envProcess,omitempty"`
-	EnvVars map[string]string `json:"envVars,omitempty"`
-	Secrets []string `json:"secrets,omitempty"`
-	Limits *FunctionResources `json:"limits,omitempty"`
-	Labels *map[string]string `json:"labels,omitempty"`
-	Annotations *map[string]string `json:"annotations,omitempty"`
-	Checkpoint uint64           `json:"checkpoint,omitempty"`
 }
 
 // DeleteFunctionRequest delete a deployed function

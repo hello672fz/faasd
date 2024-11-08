@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/containerd/containerd"
@@ -28,10 +29,12 @@ import (
 
 const annotationLabelPrefix = "com.openfaas.annotations."
 
+//var images = make(map[string]string)
+
 // MakeDeployHandler returns a handler to deploy a function
 func MakeDeployHandler(client *containerd.Client, cni gocni.CNI, secretMountPath string, alwaysPull bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-
+		log.Printf("deploy:lfz000000")
 		if r.Body == nil {
 			http.Error(w, "expected a body", http.StatusBadRequest)
 			return
@@ -49,7 +52,7 @@ func MakeDeployHandler(client *containerd.Client, cni gocni.CNI, secretMountPath
 
 			return
 		}
-
+		log.Printf("[Deploy] - error parsing input: %s", err)
 		namespace := getRequestNamespace(req.Namespace)
 
 		// Check if namespace exists, and it has the openfaas label
@@ -94,19 +97,22 @@ func MakeDeployHandler(client *containerd.Client, cni gocni.CNI, secretMountPath
 // trying to deploy a new one.
 func prepull(ctx context.Context, req types.FunctionDeployment, client *containerd.Client, alwaysPull bool) (containerd.Image, error) {
 	start := time.Now()
+	//TODO:use exsiting cnt
 	r, err := reference.ParseNormalizedNamed(req.Image)
 	if err != nil {
 		return nil, err
 	}
 
 	imgRef := reference.TagNameOnly(r).String()
+	//images[req.Service] = imgRef
 
 	snapshotter := ""
 	if val, ok := os.LookupEnv("snapshotter"); ok {
 		snapshotter = val
 	}
 
-	image, err := service.PrepareImage(ctx, client, imgRef, snapshotter, alwaysPull)
+	//image, err := service.PrepareImage(ctx, client, imgRef, snapshotter, alwaysPull)
+	image, err := service.PrepareImage(ctx, client, imgRef, snapshotter, false)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to pull image %s", imgRef)
 	}
@@ -125,6 +131,7 @@ func deploy(ctx context.Context, req types.FunctionDeployment, client *container
 	}
 
 	image, err := prepull(ctx, req, client, alwaysPull)
+
 	if err != nil {
 		return err
 	}
@@ -159,7 +166,7 @@ func deploy(ctx context.Context, req types.FunctionDeployment, client *container
 		v := qty.Value()
 		memory.Limit = &v
 	}
-
+	//create containers.Container from the input-containers.Container
 	container, err := client.NewContainer(
 		ctx,
 		name,
@@ -174,12 +181,19 @@ func deploy(ctx context.Context, req types.FunctionDeployment, client *container
 			withMemory(memory)),
 		containerd.WithContainerLabels(labels),
 	)
+	//container, err := client.NewContainer(
+	//	ctx,
+	//	name,
+	//	containerd.WithNewSnapshot(name+"-snapshot23", image),
+	//	containerd.WithNewSpec(oci.WithImageConfig(image)),
+	//)
 
 	if err != nil {
 		return fmt.Errorf("unable to create container: %s, error: %w", name, err)
 	}
 
-	return createTask(ctx, container, cni)
+	//return createTask(ctx, container, cni)
+	return createTaskWithCheckpoint(ctx, container, cni)
 
 }
 
@@ -259,6 +273,206 @@ func createTask(ctx context.Context, container containerd.Container, cni gocni.C
 	if startErr := task.Start(ctx); startErr != nil {
 		return errors.Wrapf(startErr, "Unable to start task: %s", name)
 	}
+	return nil
+}
+
+//
+//func createTaskWithCheckpoint(ctx context.Context, container containerd.Container, cni gocni.CNI) error {
+//
+//	name := container.ID()
+//
+//	// create image path store criu image files
+//	imagePath := "/tmp/checkpoint"
+//	filePath := filepath.Join(imagePath, container.ID()+"-ckpt")
+//
+//	//task, taskErr := container.NewTask(ctx, cio.NullIO, containerd.WithRestoreImagePath(filePath))
+//	task, taskErr := container.NewTask(ctx, cio.BinaryIO("/usr/local/bin/faasd", nil), containerd.WithRestoreImagePath(filePath))
+//	//task, taskErr := container.NewTask(ctx, cio.BinaryIO("/usr/local/bin/faasd", nil))
+//	//// 获取容器的状态，包括 Snapshotkey
+//	//r, err := container.get(ctx)
+//	//if err != nil {
+//	//	return fmt.Errorf("failed to get container state: %s, error: %w", name, err)
+//	//}
+//	//
+//	//// 输出 r.Snapshotter
+//	//log.Printf("Container ID: %s\tSnapshotkey: %s\n", name, r.Snapshotkey)
+//
+//	if taskErr != nil {
+//		fmt.Errorf("unable to start task: %s, error: %w", name, taskErr)
+//	}
+//
+//	log.Printf("Container ID: %s\tTask ID %s:\tTask PID: %d\t\n", name, task.ID(), task.Pid())
+//
+//	//ip, err := cninetwork.GetIPAddress(name, task.Pid())
+//	//if err != nil {
+//	//	fmt.Errorf("unable to GetIPAddress")
+//	//	return err
+//	//}
+//	//
+//	//log.Printf("%s has IP: %s.\n", name, ip)
+//
+//	_, err := task.Wait(ctx)
+//
+//	if err != nil {
+//		fmt.Errorf("Unable to wait for task to start: %s", name)
+//		return err
+//	}
+//
+//	if startErr := task.Start(ctx); startErr != nil {
+//		fmt.Errorf("Unable to start task: %s", name)
+//		return err
+//	}
+//
+//	labels := map[string]string{}
+//	_, err = cninetwork.CreateCNINetwork(ctx, cni, task, labels)
+//
+//	if err != nil {
+//		fmt.Errorf("unable to CreateCNINetwork")
+//		return err
+//	}
+//
+//	//// create image path store criu image files
+//	//imagePath = "/tmp/checkpoint"
+//	//filePath = filepath.Join(imagePath, container.ID()+"-ckpt")
+//	//
+//	//// Remove the directory and its contents if it exists
+//	//err = os.RemoveAll(filePath)
+//	//if err != nil {
+//	//	fmt.Errorf("failed to delete directory %s: %w", filePath, err)
+//	//	return err
+//	//}
+//	//
+//	//// Create a new empty directory
+//	//err = os.Mkdir(filePath, 0755) // 0755 sets read, write, and execute permissions
+//	//if err != nil {
+//	//	fmt.Errorf("failed to create directory %s: %w", filePath, err)
+//	//	return err
+//	//}
+//	//
+//	//// checkpoint task
+//	//if _, err := task.Checkpoint(ctx, containerd.WithCheckpointImagePath(filePath)); err != nil {
+//	//	return err
+//	//}
+//
+//	return nil
+//}
+
+func createTaskWithCheckpoint(ctx context.Context, container containerd.Container, cni gocni.CNI) error {
+
+	name := container.ID()
+
+	task, taskErr := container.NewTask(ctx, cio.BinaryIO("/usr/local/bin/faasd", nil))
+	//// 获取容器的状态，包括 Snapshotkey
+	//r, err := container.get(ctx)
+	//if err != nil {
+	//	return fmt.Errorf("failed to get container state: %s, error: %w", name, err)
+	//}
+	//
+	//// 输出 r.Snapshotter
+	//log.Printf("Container ID: %s\tSnapshotkey: %s\n", name, r.Snapshotkey)
+
+	if taskErr != nil {
+		fmt.Errorf("unable to start task: %s, error: %w", name, taskErr)
+		return taskErr
+	}
+
+	log.Printf("Container ID: %s\tTask ID %s:\tTask PID: %d\t\n", name, task.ID(), task.Pid())
+
+	labels := map[string]string{}
+	_, err := cninetwork.CreateCNINetwork(ctx, cni, task, labels)
+
+	if err != nil {
+		return err
+	}
+
+	ip, err := cninetwork.GetIPAddress(name, task.Pid())
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%s has IP: %s.\n", name, ip)
+
+	_, err = task.Wait(ctx)
+
+	if err != nil {
+		errors.Wrapf(err, "Unable to wait for task to start: %s", name)
+		return err
+	}
+
+	if startErr := task.Start(ctx); startErr != nil {
+		errors.Wrapf(startErr, "Unable to start task: %s", name)
+		return err
+	}
+
+	// create image path store criu image files
+	imagePath := "/tmp/checkpoint"
+	filePath := filepath.Join(imagePath, container.ID()+"-ckpt")
+
+	// Remove the directory and its contents if it exists
+	err = os.RemoveAll(filePath)
+	if err != nil {
+		fmt.Errorf("failed to delete directory %s: %w", filePath, err)
+		return err
+	}
+
+	// Create a new empty directory
+	err = os.Mkdir(filePath, 0755) // 0755 sets read, write, and execute permissions
+	if err != nil {
+		fmt.Errorf("failed to create directory %s: %w", filePath, err)
+		return err
+	}
+
+	// checkpoint task
+	if _, err := task.Checkpoint(ctx, containerd.WithCheckpointImagePath(filePath)); err != nil {
+		return err
+	}
+
+	//if err := task.Kill(ctx, syscall.SIGKILL); err != nil {
+	//	return nil, errors.Wrapf(err, "Unable to kill for task to start: %s", name)
+	//}
+	//<-statusC
+	//
+	//if _, err := task.Delete(ctx); err != nil {
+	//	return nil, errors.Wrapf(err, "Unable to Delete for task to start: %s", name)
+	//}
+
+	//task, taskErr = container.NewTask(ctx, cio.NewCreator(cio.WithStdio), containerd.WithRestoreImagePath(filePath))
+	////task, taskErr = container.NewTask(ctx, cio.BinaryIO("/usr/local/bin/faasd", nil))
+	//// TODO: test
+	//if taskErr != nil {
+	//	return fmt.Errorf("unable to restore task: %s, error: %w", name, taskErr)
+	//}
+	//
+	//log.Printf("Container ID: %s\tTask ID %s:\tTask PID: %d\t\n", name, task.ID(), task.Pid())
+	//
+	//labels = map[string]string{}
+	//_, err = cninetwork.CreateCNINetwork(ctx, cni, task, labels)
+	//
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//ip, err = cninetwork.GetIPAddress(name, task.Pid())
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//log.Printf("%s has IP: %s.\n", name, ip)
+	//
+	//_, err = task.Wait(ctx)
+	//
+	//if err != nil {
+	//	return errors.Wrapf(err, "Unable to wait for task to start: %s", name)
+	//}
+	//
+	//if startErr := task.Start(ctx); startErr != nil {
+	//	return errors.Wrapf(startErr, "Unable to start task: %s", name)
+	//}
+
+	//checkpoint, err := task.Checkpoint(ctx)
+	//err := client.Push(ctx, "myregistry/checkpoints/redis:master", checkpoint)   192.168.1.176:5000/checkpoint/helloworldlfz:cr-1
+
+	//return task, nil
 	return nil
 }
 
@@ -351,3 +565,18 @@ func preDeploy(client *containerd.Client, additional int64) error {
 	}
 	return nil
 }
+
+//// WithCheckpointImagePath sets image path for checkpoint option
+//func WithCheckpointImagePath(path string) CheckpointTaskOpts {
+//	return func(r *CheckpointTaskInfo) error {
+//		if r.Options == nil {
+//			r.Options = &options.CheckpointOptions{}
+//		}
+//		opts, ok := r.Options.(*options.CheckpointOptions)
+//		if !ok {
+//			return errors.New("invalid runtime v2 checkpoint options format")
+//		}
+//		opts.ImagePath = path
+//		return nil
+//	}
+//}

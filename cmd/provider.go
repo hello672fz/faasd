@@ -89,7 +89,7 @@ nameserver 8.8.4.4`), workingDirectoryPermission); err != nil {
 		DeployFunction:  httpHeaderMiddleware(handlers.MakeDeployHandler(client, cni, baseUserSecretsPath, alwaysPull)),
 		FunctionLister:  httpHeaderMiddleware(handlers.MakeReadHandler(client)),
 		FunctionStatus:  httpHeaderMiddleware(handlers.MakeReplicaReaderHandler(client)),
-		ScaleFunction:   httpHeaderMiddleware(handlers.MakeReplicaUpdateHandler(client, cni)),
+		ScaleFunction:   httpHeaderMiddleware(handlers.MakeReplicaUpdateHandler(client, baseUserSecretsPath, cni)),
 		UpdateFunction:  httpHeaderMiddleware(handlers.MakeUpdateHandler(client, cni, baseUserSecretsPath, alwaysPull)),
 		Health:          httpHeaderMiddleware(func(w http.ResponseWriter, r *http.Request) {}),
 		Info:            httpHeaderMiddleware(handlers.MakeInfoHandler(faasd.Version, faasd.GitCommit)),

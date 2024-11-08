@@ -34,7 +34,7 @@ const annotationLabelPrefix = "com.openfaas.annotations."
 // MakeDeployHandler returns a handler to deploy a function
 func MakeDeployHandler(client *containerd.Client, cni gocni.CNI, secretMountPath string, alwaysPull bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("deploy:lfz000000")
+
 		if r.Body == nil {
 			http.Error(w, "expected a body", http.StatusBadRequest)
 			return
@@ -406,6 +406,16 @@ func createTaskWithCheckpoint(ctx context.Context, container containerd.Containe
 
 	// create image path store criu image files
 	imagePath := "/tmp/checkpoint"
+	_, err = os.Stat(imagePath)
+	if os.IsNotExist(err) {
+		fmt.Printf("Directory does not exist: %s\n, now creating", imagePath)
+		err = os.Mkdir(imagePath, 0755)
+		if err != nil {
+			fmt.Println("Error creating directory:", err)
+			return err
+		}
+	}
+
 	filePath := filepath.Join(imagePath, container.ID()+"-ckpt")
 
 	// Remove the directory and its contents if it exists
